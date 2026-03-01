@@ -20,6 +20,7 @@ import nest_asyncio
 import uvicorn
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from mcp.shared.exceptions import McpError
 from pythonjsonlogger import jsonlogger
@@ -101,6 +102,7 @@ MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0").strip()
 MCP_PORT_RAW = os.getenv("MCP_PORT", "8000").strip()
 MCP_PATH = os.getenv("MCP_PATH", "/mcp").strip()
 MCP_BEARER_TOKEN = os.getenv("MCP_BEARER_TOKEN", "").strip()
+MCP_ALLOWED_HOSTS_RAW = os.getenv("MCP_ALLOWED_HOSTS", "").strip()
 
 try:
     MCP_PORT = int(MCP_PORT_RAW)
@@ -130,7 +132,23 @@ SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING", "").strip()
 if not SESSION_STRING:
     raise SystemExit("Missing required environment variable TELEGRAM_SESSION_STRING")
 
-mcp = FastMCP("telegram")
+
+def _parse_comma_separated(value: str) -> List[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+allowed_hosts = _parse_comma_separated(MCP_ALLOWED_HOSTS_RAW)
+if not allowed_hosts:
+    allowed_hosts = ["127.0.0.1", "localhost", "[::1]", "127.0.0.1:*", "localhost:*", "[::1]:*"]
+    if MCP_HOST not in ("127.0.0.1", "localhost", "::1", "0.0.0.0"):
+        allowed_hosts.extend([MCP_HOST, f"{MCP_HOST}:*"])
+
+transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=allowed_hosts,
+)
+
+mcp = FastMCP("telegram", host=MCP_HOST, port=MCP_PORT, transport_security=transport_security)
 
 # Use string session only for deterministic non-interactive deployments
 client = TelegramClient(StringSession(SESSION_STRING), TELEGRAM_API_ID, TELEGRAM_API_HASH)

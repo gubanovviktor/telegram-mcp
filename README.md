@@ -211,8 +211,12 @@ Copy `.env.example` to `.env` and fill in your values:
 ```
 TELEGRAM_API_ID=your_api_id_here
 TELEGRAM_API_HASH=your_api_hash_here
-TELEGRAM_SESSION_NAME=anon
 TELEGRAM_SESSION_STRING=your_session_string_here
+MCP_TRANSPORT=streamable-http
+MCP_HOST=0.0.0.0
+MCP_PORT=8000
+MCP_PATH=/mcp
+MCP_BEARER_TOKEN=your_strong_token_here
 ```
 Get your API credentials at [my.telegram.org/apps](https://my.telegram.org/apps).
 
@@ -238,7 +242,7 @@ You have two options:
 
 This method uses the `docker-compose.yml` file and automatically reads your credentials from a `.env` file.
 
-1.  **Create `.env` File:** Ensure you have a `.env` file in the project root containing your `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `TELEGRAM_SESSION_STRING` (or `TELEGRAM_SESSION_NAME`). Use `.env.example` as a template.
+1.  **Create `.env` File:** Ensure you have a `.env` file in the project root containing your `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION_STRING`, and MCP settings. Use `.env.example` as a template.
 2.  **Run Compose:**
     ```bash
     docker compose up --build
@@ -255,11 +259,43 @@ docker run -it --rm \
   -e TELEGRAM_API_ID="YOUR_API_ID" \
   -e TELEGRAM_API_HASH="YOUR_API_HASH" \
   -e TELEGRAM_SESSION_STRING="YOUR_SESSION_STRING" \
+  -e MCP_TRANSPORT="streamable-http" \
+  -e MCP_BEARER_TOKEN="YOUR_STRONG_TOKEN" \
   telegram-mcp:latest
 ```
 *   Replace placeholders with your actual credentials.
-*   Use `-e TELEGRAM_SESSION_NAME=your_session_file_name` instead of `TELEGRAM_SESSION_STRING` if you prefer file-based sessions (requires volume mounting, see `docker-compose.yml` for an example).
-*   The `-it` flags are crucial for interacting with the server.
+*   The `-it` flags are optional for HTTP mode and can be removed for detached usage.
+
+### Streamable HTTP endpoint
+
+With defaults from `.env.example`, MCP is served at:
+
+```text
+http://localhost:8000/mcp
+```
+
+Health endpoint:
+
+```text
+http://localhost:8000/health
+```
+
+Requests to `/mcp` require:
+
+```text
+Authorization: Bearer <MCP_BEARER_TOKEN>
+```
+
+To run in local stdio mode for desktop clients, set:
+
+```text
+MCP_TRANSPORT=stdio
+```
+
+### Dokploy deployment baseline
+
+- Dokploy env template: `docs/dokploy.env.example`
+- Operational runbook: `docs/dokploy-runbook.md`
 
 ---
 
@@ -279,6 +315,23 @@ Edit your Claude desktop config (e.g. `~/Library/Application Support/Claude/clau
         "run",
         "main.py"
       ]
+    }
+  }
+}
+```
+
+### MCP over HTTP (recommended for Dokploy)
+
+For remote deployment, use a streamable HTTP endpoint:
+
+```json
+{
+  "mcpServers": {
+    "telegram-mcp-http": {
+      "url": "https://your-domain.example/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_STRONG_TOKEN"
+      }
     }
   }
 }

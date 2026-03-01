@@ -3,6 +3,7 @@ import os
 
 os.environ["TELEGRAM_API_ID"] = "12345"
 os.environ["TELEGRAM_API_HASH"] = "dummy_hash"
+os.environ["TELEGRAM_SESSION_STRING"] = "dummy_session_string"
 from main import validate_id, ValidationError, log_and_format_error
 from functools import wraps
 import asyncio

@@ -8,6 +8,7 @@ from mcp.types import ErrorData
 
 os.environ.setdefault("TELEGRAM_API_ID", "12345")
 os.environ.setdefault("TELEGRAM_API_HASH", "dummy_hash")
+os.environ.setdefault("TELEGRAM_SESSION_STRING", "dummy_session_string")
 
 import main
 

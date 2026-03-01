@@ -7,19 +7,27 @@ import asyncio
 import sqlite3
 import logging
 import mimetypes
+import secrets
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import List, Dict, Optional, Union, Any
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from contextlib import asynccontextmanager, AsyncExitStack
 
 # Third-party libraries
 import nest_asyncio
+import uvicorn
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
 from mcp.shared.exceptions import McpError
 from pythonjsonlogger import jsonlogger
+from starlette.applications import Starlette
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 from telethon import TelegramClient, functions, types, utils
 from telethon.sessions import StringSession
 from telethon.tl.types import (
@@ -88,21 +96,64 @@ def get_entity_filter_type(entity: Any) -> Optional[str]:
 
 load_dotenv()
 
-TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
-TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
-TELEGRAM_SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME")
+MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "streamable-http").strip().lower()
+MCP_HOST = os.getenv("MCP_HOST", "0.0.0.0").strip()
+MCP_PORT_RAW = os.getenv("MCP_PORT", "8000").strip()
+MCP_PATH = os.getenv("MCP_PATH", "/mcp").strip()
+MCP_BEARER_TOKEN = os.getenv("MCP_BEARER_TOKEN", "").strip()
 
-# Check if a string session exists in environment, otherwise use file-based session
-SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING")
+try:
+    MCP_PORT = int(MCP_PORT_RAW)
+except ValueError as exc:
+    raise SystemExit("MCP_PORT must be a valid integer") from exc
+
+if not MCP_PATH.startswith("/"):
+    MCP_PATH = f"/{MCP_PATH}"
+
+if MCP_PATH != "/" and MCP_PATH.endswith("/"):
+    MCP_PATH = MCP_PATH.rstrip("/")
+
+TELEGRAM_API_ID_RAW = os.getenv("TELEGRAM_API_ID", "").strip()
+if not TELEGRAM_API_ID_RAW:
+    raise SystemExit("Missing required environment variable TELEGRAM_API_ID")
+
+try:
+    TELEGRAM_API_ID = int(TELEGRAM_API_ID_RAW)
+except ValueError as exc:
+    raise SystemExit("TELEGRAM_API_ID must be a valid integer") from exc
+
+TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "").strip()
+if not TELEGRAM_API_HASH:
+    raise SystemExit("Missing required environment variable TELEGRAM_API_HASH")
+
+SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING", "").strip()
+if not SESSION_STRING:
+    raise SystemExit("Missing required environment variable TELEGRAM_SESSION_STRING")
 
 mcp = FastMCP("telegram")
 
-if SESSION_STRING:
-    # Use the string session if available
-    client = TelegramClient(StringSession(SESSION_STRING), TELEGRAM_API_ID, TELEGRAM_API_HASH)
-else:
-    # Use file-based session
-    client = TelegramClient(TELEGRAM_SESSION_NAME, TELEGRAM_API_ID, TELEGRAM_API_HASH)
+# Use string session only for deterministic non-interactive deployments
+client = TelegramClient(StringSession(SESSION_STRING), TELEGRAM_API_ID, TELEGRAM_API_HASH)
+
+
+class BearerTokenAuthMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, token: str):
+        super().__init__(app)
+        self.token = token
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+        provided_token = auth_header.split(" ", 1)[1].strip()
+        if not secrets.compare_digest(provided_token, self.token):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+        return await call_next(request)
 
 # Setup robust logging with both file and console output
 logger = logging.getLogger("telegram_mcp")
@@ -4610,13 +4661,31 @@ async def reorder_folders(folder_ids: List[int]) -> str:
 
 async def _main() -> None:
     try:
+        if MCP_TRANSPORT not in ("stdio", "streamable-http"):
+            raise ValueError(
+                f"Unsupported MCP_TRANSPORT '{MCP_TRANSPORT}'. "
+                "Supported values: stdio, streamable-http."
+            )
+
+        if MCP_TRANSPORT == "streamable-http" and not MCP_BEARER_TOKEN:
+            raise ValueError(
+                "MCP_BEARER_TOKEN is required when MCP_TRANSPORT=streamable-http."
+            )
+
         # Start the Telethon client non-interactively
         print("Starting Telegram client...")
         await client.start()
 
-        print("Telegram client started. Running MCP server...")
-        # Use the asynchronous entrypoint instead of mcp.run()
-        await mcp.run_stdio_async()
+        if MCP_TRANSPORT == "stdio":
+            print("Telegram client started. Running MCP server over stdio...")
+            await mcp.run_stdio_async()
+            return
+
+        print(
+            f"Telegram client started. Running MCP server over streamable HTTP at "
+            f"http://{MCP_HOST}:{MCP_PORT}{MCP_PATH}"
+        )
+        await _run_streamable_http_async()
     except Exception as e:
         print(f"Error starting client: {e}", file=sys.stderr)
         if isinstance(e, sqlite3.OperationalError) and "database is locked" in str(e):
@@ -4625,6 +4694,39 @@ async def _main() -> None:
                 file=sys.stderr,
             )
         sys.exit(1)
+
+
+async def _healthcheck(_request: Request) -> JSONResponse:
+    return JSONResponse({"status": "ok"})
+
+
+@asynccontextmanager
+async def _http_lifespan(_app: Starlette):
+    async with AsyncExitStack() as stack:
+        await stack.enter_async_context(mcp.session_manager.run())
+        yield
+
+
+def _build_streamable_http_app() -> Starlette:
+    # When mounting under MCP_PATH, streamable endpoint should be rooted at "/"
+    mcp.settings.streamable_http_path = "/"
+    mcp_app = mcp.streamable_http_app()
+    app = Starlette(
+        routes=[
+            Route("/health", _healthcheck, methods=["GET"]),
+            Mount(MCP_PATH, app=mcp_app),
+        ],
+        lifespan=_http_lifespan,
+    )
+    app.add_middleware(BearerTokenAuthMiddleware, token=MCP_BEARER_TOKEN)
+    return app
+
+
+async def _run_streamable_http_async() -> None:
+    app = _build_streamable_http_app()
+    config = uvicorn.Config(app=app, host=MCP_HOST, port=MCP_PORT, log_level="info")
+    server = uvicorn.Server(config=config)
+    await server.serve()
 
 
 def main() -> None:

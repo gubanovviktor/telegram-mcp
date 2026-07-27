@@ -103,6 +103,7 @@ MCP_PORT_RAW = os.getenv("MCP_PORT", "8000").strip()
 MCP_PATH = os.getenv("MCP_PATH", "/mcp").strip()
 MCP_BEARER_TOKEN = os.getenv("MCP_BEARER_TOKEN", "").strip()
 MCP_ALLOWED_HOSTS_RAW = os.getenv("MCP_ALLOWED_HOSTS", "").strip()
+TELEGRAM_ACCOUNT_NAME = os.getenv("TELEGRAM_ACCOUNT_NAME", "telegram").strip()
 
 try:
     MCP_PORT = int(MCP_PORT_RAW)
@@ -1902,6 +1903,12 @@ async def get_me() -> str:
         return json.dumps(format_entity(me), indent=2)
     except Exception as e:
         return log_and_format_error("get_me", e)
+
+
+@mcp.tool(annotations=ToolAnnotations(title="Get Server Info", openWorldHint=True, readOnlyHint=True))
+async def get_server_info() -> str:
+    """Return non-secret diagnostics for this Telegram MCP server instance."""
+    return json.dumps(_server_info_payload(), indent=2)
 
 
 @mcp.tool(
@@ -4739,8 +4746,15 @@ async def _main() -> None:
         sys.exit(1)
 
 
+def _server_info_payload() -> dict[str, str]:
+    return {
+        "account_name": TELEGRAM_ACCOUNT_NAME or "telegram",
+        "transport": MCP_TRANSPORT,
+    }
+
+
 async def _healthcheck(_request: Request) -> JSONResponse:
-    return JSONResponse({"status": "ok"})
+    return JSONResponse({"status": "ok", **_server_info_payload()})
 
 
 @asynccontextmanager

@@ -216,7 +216,7 @@ MCP_TRANSPORT=streamable-http
 MCP_HOST=0.0.0.0
 MCP_PORT=8000
 MCP_PATH=/mcp
-MCP_BEARER_TOKEN=your_strong_token_here
+MCP_BEARER_TOKEN=replace_with_strong_random_token
 MCP_ALLOWED_HOSTS=localhost,localhost:8000,your-domain.example,your-domain.example:443
 ```
 Get your API credentials at [my.telegram.org/apps](https://my.telegram.org/apps).
@@ -259,9 +259,9 @@ You can run the container directly, passing credentials as environment variables
 docker run -it --rm \
   -e TELEGRAM_API_ID="YOUR_API_ID" \
   -e TELEGRAM_API_HASH="YOUR_API_HASH" \
-  -e TELEGRAM_SESSION_STRING="YOUR_SESSION_STRING" \
+  -e TELEGRAM_SESSION_STRING=your_session_string \
   -e MCP_TRANSPORT="streamable-http" \
-  -e MCP_BEARER_TOKEN="YOUR_STRONG_TOKEN" \
+  -e MCP_BEARER_TOKEN=replace_with_strong_random_token \
   telegram-mcp:latest
 ```
 *   Replace placeholders with your actual credentials.
@@ -335,6 +335,14 @@ request.
 
 - Dokploy env template: `docs/dokploy.env.example`
 - Operational runbook: `docs/dokploy-runbook.md`
+
+### Multiple Telegram Accounts
+
+Run one server instance per Telegram account. Each instance uses the same
+repository and Docker image, but has its own `TELEGRAM_SESSION_STRING`,
+`MCP_BEARER_TOKEN`, `TELEGRAM_ACCOUNT_NAME`, and domain. This keeps tool code
+shared while preventing runtime account mix-ups. See `docs/dokploy-runbook.md`
+for the Dokploy multi-instance setup.
 
 ---
 

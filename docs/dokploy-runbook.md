@@ -35,6 +35,9 @@ Recommended app/domain pairs:
 - If using Docker Compose directly, bind the app port to localhost only
   (`127.0.0.1:8000:8000`) so the MCP endpoint is reachable through the
   reverse proxy but not directly from the public internet.
+- For a local two-account reference, see
+  `docs/docker-compose.multi-instance.example.yml`. It intentionally points to
+  `.env.existing` and `.env.main`, which must stay local and uncommitted.
 
 ## 3. Create the second account application
 

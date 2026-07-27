@@ -6,9 +6,11 @@ from mcp import types
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData
 
+from test_support import VALID_DUMMY_TELEGRAM_SESSION_STRING
+
 os.environ.setdefault("TELEGRAM_API_ID", "12345")
 os.environ.setdefault("TELEGRAM_API_HASH", "dummy_hash")
-os.environ.setdefault("TELEGRAM_SESSION_STRING", "dummy_session_string")
+os.environ.setdefault("TELEGRAM_SESSION_STRING", VALID_DUMMY_TELEGRAM_SESSION_STRING)
 
 import main
 

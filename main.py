@@ -159,17 +159,42 @@ class BearerTokenAuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.token = token
 
+    @staticmethod
+    def _unauthorized_response(code: str, message: str) -> JSONResponse:
+        return JSONResponse(
+            {
+                "error": "Unauthorized",
+                "code": code,
+                "message": message,
+            },
+            status_code=401,
+            headers={
+                "WWW-Authenticate": (
+                    f'Bearer error="invalid_token", error_description="{code}"'
+                )
+            },
+        )
+
     async def dispatch(self, request: Request, call_next):
         if request.url.path == "/health":
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            return self._unauthorized_response(
+                "mcp_bearer_token_missing",
+                "Missing Authorization: Bearer <MCP_BEARER_TOKEN> header.",
+            )
 
         provided_token = auth_header.split(" ", 1)[1].strip()
         if not secrets.compare_digest(provided_token, self.token):
-            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            return self._unauthorized_response(
+                "mcp_bearer_token_invalid",
+                (
+                    "MCP bearer token is invalid. It may have been rotated or expired. "
+                    "Update the Authorization: Bearer <MCP_BEARER_TOKEN> header in your MCP client."
+                ),
+            )
 
         return await call_next(request)
 

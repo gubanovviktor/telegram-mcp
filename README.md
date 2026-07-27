@@ -217,6 +217,7 @@ MCP_HOST=0.0.0.0
 MCP_PORT=8000
 MCP_PATH=/mcp
 MCP_BEARER_TOKEN=your_strong_token_here
+MCP_ALLOWED_HOSTS=localhost,localhost:8000,your-domain.example,your-domain.example:443
 ```
 Get your API credentials at [my.telegram.org/apps](https://my.telegram.org/apps).
 
@@ -286,11 +287,49 @@ Requests to `/mcp` require:
 Authorization: Bearer <MCP_BEARER_TOKEN>
 ```
 
+If the bearer token is missing or stale, the server returns a machine-readable
+`401` response. A rotated or expired token produces:
+
+```json
+{
+  "error": "Unauthorized",
+  "code": "mcp_bearer_token_invalid",
+  "message": "MCP bearer token is invalid. It may have been rotated or expired. Update the Authorization: Bearer <MCP_BEARER_TOKEN> header in your MCP client."
+}
+```
+
 To run in local stdio mode for desktop clients, set:
 
 ```text
 MCP_TRANSPORT=stdio
 ```
+
+### Cloudflare Access protection
+
+For public deployments, put Cloudflare Access in front of the MCP hostname.
+The DNS record must be proxied through Cloudflare, and the Access application
+should use a Service Auth policy. In that setup, requests need two independent
+auth layers:
+
+```text
+CF-Access-Client-Id: <CLOUDFLARE_ACCESS_CLIENT_ID>
+CF-Access-Client-Secret: <CLOUDFLARE_ACCESS_CLIENT_SECRET>
+Authorization: Bearer <MCP_BEARER_TOKEN>
+```
+
+Failure modes are intentionally different:
+
+- Cloudflare Access rejects missing or expired Cloudflare service credentials
+  before traffic reaches the MCP server. The response is `403` from Cloudflare.
+- The MCP server rejects missing or stale `MCP_BEARER_TOKEN` values with `401`
+  and a JSON `code` such as `mcp_bearer_token_missing` or
+  `mcp_bearer_token_invalid`.
+
+For this deployment, the active Cloudflare Access service token is
+`mcp-telegram`. It was created with a 1 year lifetime and expires on
+`2027-07-27 15:54:19 UTC`. Rotate it before that date; after expiry, Codex will
+fail at the Cloudflare layer with `403`, and the MCP server will not see the
+request.
 
 ### Dokploy deployment baseline
 
@@ -330,6 +369,8 @@ For remote deployment, use a streamable HTTP endpoint:
     "telegram-mcp-http": {
       "url": "https://your-domain.example/mcp",
       "headers": {
+        "CF-Access-Client-Id": "YOUR_CLOUDFLARE_ACCESS_CLIENT_ID.access",
+        "CF-Access-Client-Secret": "YOUR_CLOUDFLARE_ACCESS_CLIENT_SECRET",
         "Authorization": "Bearer YOUR_STRONG_TOKEN"
       }
     }

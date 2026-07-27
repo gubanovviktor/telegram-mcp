@@ -1,9 +1,11 @@
 import pytest
 import os
 
+from test_support import VALID_DUMMY_TELEGRAM_SESSION_STRING
+
 os.environ["TELEGRAM_API_ID"] = "12345"
 os.environ["TELEGRAM_API_HASH"] = "dummy_hash"
-os.environ["TELEGRAM_SESSION_STRING"] = "dummy_session_string"
+os.environ["TELEGRAM_SESSION_STRING"] = VALID_DUMMY_TELEGRAM_SESSION_STRING
 from main import validate_id, ValidationError, log_and_format_error
 from functools import wraps
 import asyncio

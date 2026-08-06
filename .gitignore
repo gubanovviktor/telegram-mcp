@@ -189,9 +189,6 @@ claude_desktop_config.json
 
 # Test files
 .cursor/
-tests/
-test.py
-extract_test_issues.py
 *.tmp
 mcp_errors.log
 telegram_test.log
@@ -205,3 +202,6 @@ two.png
 
 # Local isolated Codex worktrees
 .worktrees/
+
+aliases.json
+incoming_feed.jsonl

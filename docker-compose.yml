@@ -8,6 +8,13 @@ services:
     container_name: telegram-mcp
     env_file:
       - .env
+    # Serve streamable HTTP so one long-lived container is shared by all MCP
+    # clients (see the Transports section in README.md). MCP_HOST must be
+    # 0.0.0.0 inside the container for the published port to work. Protected
+    # by MCP_BEARER_TOKEN (set in .env) — see docs/dokploy-runbook.md.
+    environment:
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -16,4 +23,9 @@ services:
       timeout: 3s
       retries: 3
       start_period: 20s
+    # Optional: Uncomment the following lines to mount a local directory
+    # for persisting the Telegram session file if NOT using TELEGRAM_SESSION_STRING.
+    # Replace './telegram_sessions' with your desired host path.
+    # volumes:
+    #   - ./telegram_sessions:/app
     restart: unless-stopped
